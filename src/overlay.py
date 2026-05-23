@@ -2,9 +2,7 @@
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QMenu, QApplication
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import (
-    QPainter, QBrush, QColor, QFont, QShortcut, QKeySequence, QTextCursor,
-)
+from PySide6.QtGui import QPainter, QBrush, QColor, QFont
 
 MIN_HEIGHT = 60
 MAX_HEIGHT_RATIO = 0.75
@@ -49,7 +47,6 @@ class OverlayWindow(QWidget):
         self.resize(WIDTH, MIN_HEIGHT)
 
         self._setup_ui()
-        self._setup_hotkeys()
 
     def _calc_max_height(self):
         screen = QApplication.primaryScreen()
@@ -92,14 +89,12 @@ class OverlayWindow(QWidget):
         layout.addWidget(self.answer_view)
         self.setLayout(layout)
 
-    def _setup_hotkeys(self):
-        for seq, cb in [("Ctrl+Shift+H", self._toggle_visible),
-                        ("Ctrl+Shift+X", self.close)]:
-            s = QShortcut(QKeySequence(seq), self, cb)
-            s.setContext(Qt.ShortcutContext.ApplicationShortcut)
-
-    def _toggle_visible(self):
-        self.setVisible(not self.isVisible())
+    def toggle_visible(self):
+        """Toggle visibility via opacity to avoid window-manager hide/show glitches."""
+        if self.windowOpacity() > 0:
+            self.setWindowOpacity(0)
+        else:
+            self.setWindowOpacity(1)
 
     # ── Click-through / Interactive mode ──
 
@@ -153,8 +148,8 @@ class OverlayWindow(QWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("点击穿透" if not self._interactive else "退出穿透", self.toggle_interactive)
-        menu.addAction("隐藏 (Ctrl+Shift+H)", self._toggle_visible)
-        menu.addAction("退出 (Ctrl+Shift+X)", self.close)
+        menu.addAction("隐藏/显示 (Ctrl+Shift+X)", self.toggle_visible)
+        menu.addAction("退出程序 (Ctrl+Shift+H)", QApplication.quit)
         menu.exec(event.globalPos())
 
     # ── Public API ──

@@ -36,7 +36,7 @@ class RegionSelector(QWidget):
             rect = QRect(self._start, self._end).normalized()
 
             # Clear the selected area (make it fully transparent)
-            painter.setCompositionMode(QPainter.CompositionMode.Clear)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
             painter.eraseRect(rect)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
@@ -87,4 +87,5 @@ class RegionSelector(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
-            self._done((0, 0, self._size.width(), self._size.height()))
+            self.hide()
+            self.deleteLater()

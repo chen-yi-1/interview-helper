@@ -1,14 +1,54 @@
 """Orchestrator: ties hotkey → screenshot → OCR → AI → overlay."""
 
 import sys
+import time
+import ctypes
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, QObject
-from PySide6.QtGui import QShortcut, QKeySequence
+from PySide6.QtCore import QObject, QAbstractNativeEventFilter, QTimer
 
 from .screen_monitor import ScreenCapture
 from .audio_monitor import AudioMonitor
 from .ai_client import AIClient
 from .overlay import OverlayWindow
+
+# WinAPI constants
+WM_HOTKEY = 0x0312
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_NOREPEAT = 0x4000
+
+
+class _GlobalHotkeyFilter(QAbstractNativeEventFilter):
+    """Intercepts WM_HOTKEY messages and routes to registered callbacks."""
+
+    def __init__(self):
+        super().__init__()
+        self._callbacks = {}
+        self._last_fire = {}
+
+    def register(self, hotkey_id: int, mods: int, vk: int, callback):
+        ctypes.windll.user32.RegisterHotKey(None, hotkey_id, mods, vk)
+        self._callbacks[hotkey_id] = callback
+
+    def unregister_all(self):
+        for hid in list(self._callbacks):
+            ctypes.windll.user32.UnregisterHotKey(None, hid)
+        self._callbacks.clear()
+        self._last_fire.clear()
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType != "windows_generic_MSG":
+            return False, 0
+        msg = ctypes.wintypes.MSG.from_address(message.__int__())
+        if msg.message == WM_HOTKEY and msg.wParam in self._callbacks:
+            now = time.monotonic()
+            if now - self._last_fire.get(msg.wParam, 0) < 0.3:
+                return True, 0  # debounce rapid repeats
+            self._last_fire[msg.wParam] = now
+            # Defer to next event loop cycle to avoid re-entrancy issues
+            QTimer.singleShot(0, self._callbacks[msg.wParam])
+            return True, 0
+        return False, 0
 
 
 class Orchestrator(QObject):
@@ -26,7 +66,7 @@ class Orchestrator(QObject):
         self.audio = AudioMonitor(config) if config.get('deepseek_api_key') else None
 
         self._connect_signals()
-        self._setup_hotkeys()
+        self._setup_global_hotkeys()
         self.app.aboutToQuit.connect(self._cleanup)
 
     def _connect_signals(self):
@@ -49,17 +89,20 @@ class Orchestrator(QObject):
         self.overlay.show_question(text)
         self.ai.ask(text)
 
-    def _setup_hotkeys(self):
-        # QShortcut works even when overlay is click-through (ApplicationShortcut context)
-        s = QShortcut(QKeySequence("Ctrl+Shift+Z"), self.overlay, self._capture_and_ask)
-        s.setContext(Qt.ShortcutContext.ApplicationShortcut)
+    def _setup_global_hotkeys(self):
+        """Global hotkeys via WinAPI — work even when app is in background."""
+        self._hotkey_filter = _GlobalHotkeyFilter()
+        self.app.installNativeEventFilter(self._hotkey_filter)
+        self._hotkey_filter.register(1, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x5A, self._capture_and_ask)  # Z
+        self._hotkey_filter.register(2, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x48, QApplication.quit)    # H
+        self._hotkey_filter.register(3, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x58, self.overlay.toggle_visible)  # X
 
     def _capture_and_ask(self):
         """Hotkey trigger: region selector → screenshot → OCR → AI → overlay."""
         from .region_selector import RegionSelector
 
-        selector = RegionSelector()
-        selector.region_selected.connect(self._on_region_selected)
+        self._selector = RegionSelector()
+        self._selector.region_selected.connect(self._on_region_selected)
 
     def _on_region_selected(self, region: tuple):
         self.overlay.show_question("识别中...")
@@ -90,6 +133,7 @@ class Orchestrator(QObject):
         sys.exit(self.app.exec())
 
     def _cleanup(self):
+        self._hotkey_filter.unregister_all()
         self.screen.cleanup()
         if self.audio:
             self.audio.requestInterruption()
