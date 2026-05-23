@@ -71,6 +71,7 @@ class Orchestrator(QObject):
 
     def _connect_signals(self):
         self.ai.response_ready.connect(self.overlay.show_structured)
+        self.overlay.confirm_edit.connect(self._on_confirm_edit)
         if self.audio:
             self.audio.new_text.connect(self._on_audio_question)
         self.ai.response_token.connect(self._on_token)
@@ -118,6 +119,9 @@ class Orchestrator(QObject):
             })
             return
 
+        self.overlay.show_editable(text)
+
+    def _on_confirm_edit(self, text: str):
         self.overlay.show_question(text)
         self.ai.ask(text)
 

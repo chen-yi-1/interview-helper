@@ -41,16 +41,17 @@ E:\miniconda3\envs\common\python.exe main.py
 1. 按 `Ctrl+Shift+Z` → 出现全屏半透明选区
 2. **拖动鼠标**框选题目区域，松开自动识别
 3. 按 `Esc` 取消截图
-4. OCR 识别后自动发送到 DeepSeek AI
-5. 浮窗显示结构化回答（思路 + 答案 + 代码 + 复杂度）
-6. 浮窗默认**点击穿透**，不干扰操作
-7. 按住 `Alt` 可拖拽浮窗位置
+4. OCR 识别后，浮窗显示可编辑的文本，可修正错字
+5. 按 `Ctrl+Enter` 确认发送到 DeepSeek AI
+6. 浮窗显示结构化回答（思路 + 答案 + 代码 + 复杂度）
+7. 浮窗默认**点击穿透**，不干扰操作
+8. 按住 `Alt` 可拖拽浮窗位置
 
 ## 技术栈
 
 - **GUI**: PySide6 (Qt6)
 - **截图**: dxcam (Windows Desktop Duplication API)
-- **OCR**: EasyOCR (中英文)
+- **OCR**: EasyOCR (ch_sim + en)，基于 PyTorch，CPU 运行
 - **AI**: DeepSeek Chat API (结构化 JSON 输出)
 - **全局热键**: WinAPI RegisterHotKey + QAbstractNativeEventFilter
 - **浮窗**: 半透明无边框 Tool 窗口，WA_TransparentForMouseEvents 点击穿透

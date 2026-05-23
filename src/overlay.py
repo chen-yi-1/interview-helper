@@ -1,7 +1,7 @@
 """Floating overlay: click-through by default, structured answer rendering."""
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QMenu, QApplication
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QPainter, QBrush, QColor, QFont
 
 MIN_HEIGHT = 60
@@ -31,6 +31,7 @@ body {{ color: #ccc; font-family: {font}; font-size: 15px; }}
 
 
 class OverlayWindow(QWidget):
+    confirm_edit = Signal(str)
     def __init__(self):
         super().__init__(None)
         self.setWindowFlags(
@@ -112,6 +113,12 @@ class OverlayWindow(QWidget):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Alt:
             self.set_interactive(True)
+        if event.key() == Qt.Key.Key_Return and event.modifiers() == Qt.ControlModifier:
+            if not self.answer_view.isReadOnly():
+                text = self.answer_view.toPlainText()
+                self.answer_view.setReadOnly(True)
+                self.confirm_edit.emit(text)
+                return
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
@@ -154,7 +161,36 @@ class OverlayWindow(QWidget):
 
     # ── Public API ──
 
+    def show_editable(self, text: str):
+        """Show OCR text as editable for user review before sending to AI."""
+        self.answer_view.setReadOnly(False)
+        self.answer_view.setPlainText(text)
+        self.answer_view.setStyleSheet("""
+            QTextEdit {
+                background: rgba(74,158,255,20); border: 1px solid #4a9eff;
+                border-radius: 6px; padding: 8px; color: #fff; font-size: 14px;
+            }
+            QScrollBar:vertical {
+                background: rgba(255,255,255,15); width: 8px;
+                border-radius: 4px; margin: 2px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255,255,255,70);
+                border-radius: 4px; min-height: 24px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(255,255,255,120);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0px; }
+        """)
+        self.answer_view.selectAll()
+        QApplication.processEvents()
+        self._adjust_size()
+
     def show_question(self, question: str):
+        self.answer_view.setReadOnly(True)
+        self._reset_stylesheet()
         self.answer_view.setHtml(
             HTML_TPL.format(font="sans-serif",
                             body=f'<p style="color:#999;font-size:13px">问题: {self._escape(question)}</p>'
@@ -165,6 +201,8 @@ class OverlayWindow(QWidget):
 
     def show_structured(self, data: dict):
         """Render structured JSON answer."""
+        self.answer_view.setReadOnly(True)
+        self._reset_stylesheet()
         parts = []
         font_family = "'Microsoft YaHei','PingFang SC',sans-serif"
         mono = "'Cascadia Code','Fira Code','Consolas',monospace"
@@ -194,6 +232,26 @@ class OverlayWindow(QWidget):
         QApplication.processEvents()
         self._adjust_size()
         self._scroll_to_bottom()
+
+    def _reset_stylesheet(self):
+        self.answer_view.setStyleSheet("""
+            QTextEdit {
+                background: transparent; border: none; padding: 0px;
+            }
+            QScrollBar:vertical {
+                background: rgba(255,255,255,15); width: 8px;
+                border-radius: 4px; margin: 2px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255,255,255,70);
+                border-radius: 4px; min-height: 24px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(255,255,255,120);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0px; }
+        """)
 
     # ── Sizing ──
 
