@@ -1,6 +1,10 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QMenu
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QTextEdit, QMenu, QScrollBar,
+)
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QPainter, QBrush, QColor, QFont, QShortcut, QKeySequence
+from PySide6.QtGui import (
+    QPainter, QBrush, QColor, QFont, QShortcut, QKeySequence, QTextCursor,
+)
 
 
 class OverlayWindow(QWidget):
@@ -14,7 +18,7 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        self.setGeometry(100, 100, 520, 320)
+        self.setGeometry(100, 100, 520, 360)
 
         self._dragging = False
         self._drag_pos = QPoint()
@@ -25,26 +29,61 @@ class OverlayWindow(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout()
         layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
+        # Question label (collapsible)
         self.question_label = QLabel()
         self.question_label.setWordWrap(True)
         self.question_label.setStyleSheet(
             "color: rgba(180, 190, 210, 200); font-size: 13px;"
+            "padding: 0px;"
         )
         self.question_label.setVisible(False)
 
-        self.answer_label = QLabel("监听中...")
-        self.answer_label.setWordWrap(True)
-        self.answer_label.setStyleSheet("color: white; font-size: 15px;")
+        # Answer text area with scrollbar
+        self.answer_view = QTextEdit()
+        self.answer_view.setReadOnly(True)
+        self.answer_view.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.answer_view.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.answer_view.setStyleSheet("""
+            QTextEdit {
+                color: white;
+                font-size: 15px;
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QScrollBar:vertical {
+                background: rgba(255,255,255,20);
+                width: 8px;
+                border-radius: 4px;
+                margin: 2px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255,255,255,80);
+                border-radius: 4px;
+                min-height: 24px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(255,255,255,140);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
 
         font = QFont()
         font.setFamilies(["Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC"])
         self.question_label.setFont(font)
-        self.answer_label.setFont(font)
+        self.answer_view.setFont(font)
 
         layout.addWidget(self.question_label)
-        layout.addWidget(self.answer_label)
+        layout.addWidget(self.answer_view)
         self.setLayout(layout)
 
     def _setup_hotkeys(self):
@@ -64,7 +103,9 @@ class OverlayWindow(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._drag_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
 
     def mouseMoveEvent(self, event):
         if self._dragging:
@@ -73,6 +114,10 @@ class OverlayWindow(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
+
+    def wheelEvent(self, event):
+        # Forward scroll to the answer view
+        self.answer_view.wheelEvent(event)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -83,14 +128,26 @@ class OverlayWindow(QWidget):
     def show_question(self, question: str):
         self.question_label.setText(f"问题: {question}")
         self.question_label.setVisible(True)
-        self.answer_label.setText("")
+        self.answer_view.setPlainText("")
 
     def on_answer_start(self):
-        self.answer_label.setText("AI 思考中...")
+        self.answer_view.setPlainText("AI 思考中...")
+        self._scroll_to_bottom()
 
     def append_answer(self, token: str):
-        current = self.answer_label.text()
+        current = self.answer_view.toPlainText()
         if current in ("", "监听中...", "AI 思考中..."):
-            self.answer_label.setText(token)
+            self.answer_view.setPlainText(token)
         else:
-            self.answer_label.setText(current + token)
+            cursor = self.answer_view.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.insertText(token)
+            self.answer_view.setTextCursor(cursor)
+        self._scroll_to_bottom()
+
+    def finalize_answer(self):
+        self._scroll_to_bottom()
+
+    def _scroll_to_bottom(self):
+        sb = self.answer_view.verticalScrollBar()
+        sb.setValue(sb.maximum())

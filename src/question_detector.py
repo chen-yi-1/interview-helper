@@ -56,6 +56,11 @@ class QuestionDetector(QObject):
             r'[吗呢么吧]$',
             r'是.*还是',
             r'是否|是不是|有没有|能不能|会不会|要不要',
+            r'有什么区[别另]',
+            r'是什么$|是指什么$|是什么意[思义]',
+            r'什么(是|叫|为)',
+            r'如何(实现|处理|优化|解决|应对)',
+            r'哪些|哪几种|哪几个|哪种',
         ]
         return any(re.search(p, text) for p in patterns)
 
