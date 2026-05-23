@@ -1,6 +1,9 @@
 import queue
 import numpy as np
 from PySide6.QtCore import QThread, Signal
+from scipy import signal as scipy_signal
+
+TARGET_SR = 16000
 
 
 class AudioMonitor(QThread):
@@ -8,7 +11,7 @@ class AudioMonitor(QThread):
 
     def __init__(self, config):
         super().__init__()
-        self.sample_rate = config.get('audio_sample_rate', 16000)
+        self.target_sr = TARGET_SR
         self.vad_threshold = config.get('vad_threshold', 0.5)
         self.silence_duration = config.get('silence_duration', 1.5)
         self.whisper_model = config.get('whisper_model', 'base')
@@ -34,35 +37,45 @@ class AudioMonitor(QThread):
             print("警告: 未找到 WASAPI 音频回环设备, 音频监听不可用")
             return
 
-        audio_queue = queue.Queue()
-        is_recording = False
-        audio_buffer = []
-        silence_samples = 0
-        silence_limit = int(self.sample_rate * self.silence_duration)
+        dev_info = sd.query_devices(device_idx)
+        native_sr = int(dev_info['default_samplerate'])
+        print(f"设备原生采样率: {native_sr} Hz, 重采样至: {self.target_sr} Hz")
+        silence_limit = int(self.target_sr * self.silence_duration)
+
+        def _resample(chunk, orig_sr, target_sr):
+            if orig_sr == target_sr:
+                return chunk
+            num_samples = int(len(chunk) * target_sr / orig_sr)
+            return scipy_signal.resample(chunk, num_samples)
 
         def _create_vad():
             try:
                 from silero_vad import load_silero_vad, get_speech_timestamps
                 model = load_silero_vad()
-                return lambda x: len(get_speech_timestamps(
-                    x, model, threshold=self.vad_threshold,
-                    sampling_rate=self.sample_rate,
-                )) > 0
+                def vad_fn(chunk, sr):
+                    if sr != TARGET_SR:
+                        chunk = _resample(chunk, sr, TARGET_SR)
+                    return len(get_speech_timestamps(
+                        chunk, model, threshold=self.vad_threshold,
+                        sampling_rate=TARGET_SR,
+                    )) > 0
+                return vad_fn
             except Exception:
                 print("警告: silero-vad 加载失败, 使用能量阈值 VAD")
-                return lambda x: np.max(np.abs(x)) > 0.02
+                return lambda chunk, sr: np.max(np.abs(chunk)) > 0.02
 
         vad_fn = _create_vad()
-
-        def callback(indata, frames, _time, _status):
-            audio_queue.put(indata.copy())
+        audio_queue = queue.Queue()
+        is_recording = False
+        audio_buffer = []
+        silence_samples = 0
 
         stream = sd.InputStream(
             device=device_idx,
-            samplerate=self.sample_rate,
+            samplerate=native_sr,
             channels=1,
             dtype='float32',
-            callback=callback,
+            callback=lambda indata, frames, _t, _s: audio_queue.put(indata.copy()),
         )
 
         with stream:
@@ -72,34 +85,32 @@ class AudioMonitor(QThread):
                 except queue.Empty:
                     continue
 
-                frame_flat = frames.flatten()
-                is_speech = vad_fn(frame_flat)
+                is_speech = vad_fn(frames.flatten(), native_sr)
 
                 if is_speech:
                     if not is_recording:
                         is_recording = True
                         audio_buffer = []
-                    audio_buffer.append(frames)
+                    # Resample to target SR and store
+                    frames_resampled = _resample(frames.flatten(), native_sr, self.target_sr)
+                    audio_buffer.append(frames_resampled)
                     silence_samples = 0
                 elif is_recording:
-                    silence_samples += len(frames)
-                    audio_buffer.append(frames)
+                    frames_resampled = _resample(frames.flatten(), native_sr, self.target_sr)
+                    audio_buffer.append(frames_resampled)
+                    silence_samples += len(frames_resampled)
                     if silence_samples > silence_limit:
                         audio_data = np.concatenate(audio_buffer)
                         is_recording = False
                         audio_buffer = []
                         silence_samples = 0
-                        worker = TranscribeWorker(
-                            whisper, audio_data, self.language, self.new_text
-                        )
+                        worker = TranscribeWorker(whisper, audio_data, self.language, self.new_text)
                         worker.start()
 
             if is_recording and audio_buffer:
                 audio_data = np.concatenate(audio_buffer)
-                if len(audio_data) > self.sample_rate * 0.5:
-                    TranscribeWorker(
-                        whisper, audio_data, self.language, self.new_text
-                    ).start()
+                if len(audio_data) > self.target_sr * 0.5:
+                    TranscribeWorker(whisper, audio_data, self.language, self.new_text).start()
 
     def _find_loopback_device(self):
         import sounddevice as sd
