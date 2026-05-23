@@ -109,6 +109,11 @@ class Orchestrator(QObject):
         self.overlay.show_question("识别中...")
         QApplication.processEvents()
 
+        # Convert logical pixels to physical pixels for dxcam (DPI scaling)
+        dpr = self.overlay.screen().devicePixelRatio()
+        if dpr != 1.0:
+            region = tuple(int(c * dpr) for c in region)
+
         text = self.screen.capture_text(region=region)
 
         if not text or len(text) < 5:
