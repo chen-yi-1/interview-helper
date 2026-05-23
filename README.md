@@ -1,6 +1,6 @@
 # Interview Helper - 面试助手
 
-自动监听线上面试，捕获屏幕文字 + 系统音频，识别面试官问题，通过 DeepSeek AI 实时显示答案。
+截图 + OCR + DeepSeek AI，按 `Ctrl+Shift+Q` 一键识别屏幕问题并显示答案。
 
 ## 安装
 
@@ -14,9 +14,7 @@ E:\miniconda3\envs\common\python.exe -m pip install -r requirements.txt -i https
 
 ```json
 {
-  "deepseek_api_key": "sk-你的key",
-  "model": "deepseek-chat",
-  "temperature": 0.3
+  "deepseek_api_key": "sk-你的key"
 }
 ```
 
@@ -28,21 +26,20 @@ E:\miniconda3\envs\common\python.exe -m pip install -r requirements.txt -i https
 E:\miniconda3\envs\common\python.exe main.py
 ```
 
-启动后浮窗会显示在屏幕右下角：
-
 | 快捷键 | 功能 |
 |--------|------|
+| `Ctrl+Shift+Q` | 截图 + OCR + AI 问答 |
+| `Alt` (按住) | 切换浮窗交互模式（拖拽/滚动） |
 | `Ctrl+Shift+H` | 隐藏/显示浮窗 |
-| `Ctrl+Shift+Q` | 退出程序 |
-| 鼠标拖拽 | 移动浮窗位置 |
-| 右键菜单 | 隐藏/退出 |
+| `Ctrl+Shift+X` | 退出程序 |
+| 右键菜单 | 切换点击穿透 / 隐藏 / 退出 |
 
 ## 工作流程
 
-1. 屏幕每 2 秒 OCR 识别 + 系统音频持续监听
-2. 检测到问题文本（含问句特征）后自动去重、合并
-3. 发送到 DeepSeek API，流式获取答案
-4. 答案逐字显示在浮窗上
+1. 按 `Ctrl+Shift+Q` → 截取当前屏幕
+2. EasyOCR 识别屏幕文字
+3. DeepSeek AI 结构化输出（思路 + 答案 + 代码 + 复杂度）
+4. 浮窗显示结果，默认点击穿透不干扰操作
 
 ## 配置说明
 
@@ -52,8 +49,5 @@ E:\miniconda3\envs\common\python.exe main.py
 | model | 模型名 | deepseek-chat |
 | temperature | 温度(0-1) | 0.3 |
 | max_tokens | 最大输出长度 | 2048 |
-| ocr_interval | OCR 截屏间隔(秒) | 2.0 |
-| cooldown_seconds | 问题触发冷却(秒) | 10 |
-| max_context_rounds | 上下文保留轮数 | 5 |
 | language | 语言 | zh |
 | whisper_model | 语音模型 | base |

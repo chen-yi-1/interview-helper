@@ -55,7 +55,7 @@ class Orchestrator(QObject):
 
     def _setup_hotkeys(self):
         self.hotkey_mgr = HotkeyManager()
-        self.hotkey_mgr.register('ctrl+shift+h', self._capture_and_ask)
+        self.hotkey_mgr.register('ctrl+shift+q', self._capture_and_ask)
 
     def _capture_and_ask(self):
         """Hotkey trigger: screenshot → OCR → AI → overlay."""
