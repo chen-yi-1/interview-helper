@@ -109,8 +109,8 @@ class Orchestrator(QObject):
         self.overlay.show_question("识别中...")
         QApplication.processEvents()
 
-        # Convert logical pixels to physical pixels for dxcam (DPI scaling)
-        dpr = self.overlay.screen().devicePixelRatio()
+        # Convert logical pixels to physical pixels (DPI scaling)
+        dpr = QApplication.primaryScreen().devicePixelRatio()
         if dpr != 1.0:
             region = tuple(int(c * dpr) for c in region)
 

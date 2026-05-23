@@ -1,27 +1,28 @@
-"""Screen capture: single-shot screenshot + OCR, triggered by hotkey."""
+"""Screen capture: PIL-based screenshot + manual crop + OCR."""
+
+import os
+from PIL import Image, ImageGrab
+import numpy as np
 
 
 class ScreenCapture:
     def __init__(self):
-        self._camera = None
         self._reader = None
 
     def capture_text(self, region: tuple = None) -> str:
-        """Take screenshot (optionally of a region), run OCR, return text.
+        """Take screenshot using PIL.ImageGrab, optionally crop, run OCR.
 
         Args:
-            region: (left, top, right, bottom) or None for full screen.
+            region: (left, top, right, bottom) in physical pixels.
         """
-        if self._camera is None:
-            import dxcam
-            self._camera = dxcam.create(output_idx=0)
         if self._reader is None:
             import easyocr
             self._reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
 
-        frame = self._camera.grab(region=region)
-        if frame is None:
-            return ""
+        if region:
+            frame = np.array(ImageGrab.grab(bbox=region))
+        else:
+            frame = np.array(ImageGrab.grab())
 
         results = self._reader.readtext(frame)
         texts = []
@@ -32,6 +33,4 @@ class ScreenCapture:
         return " ".join(texts)
 
     def cleanup(self):
-        if self._camera is not None:
-            del self._camera
-            self._camera = None
+        pass
