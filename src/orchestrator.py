@@ -77,7 +77,7 @@ class Orchestrator(QObject):
     def run(self):
         self.overlay.show()
         self.overlay.show_structured({
-            "answer": "按 Ctrl+Shift+H 截图提问",
+            "answer": "按 Ctrl+Shift+Q 截图提问\n按住 Alt 拖拽浮窗\n右键菜单切换穿透模式",
             "thought": "", "code": "", "complexity": "",
         })
         if self.audio:

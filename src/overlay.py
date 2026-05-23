@@ -151,8 +151,8 @@ class OverlayWindow(QWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         menu.addAction("点击穿透" if not self._interactive else "退出穿透", self.toggle_interactive)
-        menu.addAction("隐藏", self._toggle_visible)
-        menu.addAction("退出", self.close)
+        menu.addAction("隐藏 (Ctrl+Shift+H)", self._toggle_visible)
+        menu.addAction("退出 (Ctrl+Shift+X)", self.close)
         menu.exec(event.globalPos())
 
     # ── Public API ──
