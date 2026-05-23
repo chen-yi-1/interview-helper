@@ -1,0 +1,18 @@
+{
+  "deepseek_api_key": "sk-你的API密钥",
+  "model": "deepseek-chat",
+  "base_url": "https://api.deepseek.com",
+  "temperature": 0.3,
+  "max_tokens": 2048,
+  "system_prompt": "你是一个专业面试助手。请用中文清晰、有条理地回答问题。如果是编程题，先给出解题思路，再给出代码。如果是概念题，给出定义、要点和例子。回答要简洁但全面。",
+  "ocr_interval": 2.0,
+  "audio_sample_rate": 16000,
+  "vad_threshold": 0.5,
+  "silence_duration": 1.5,
+  "cooldown_seconds": 10,
+  "max_context_rounds": 5,
+  "language": "zh",
+  "audio_device_index": null,
+  "whisper_model": "base",
+  "whisper_device": "cpu"
+}
