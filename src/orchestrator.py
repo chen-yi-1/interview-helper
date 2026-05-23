@@ -58,12 +58,6 @@ class Orchestrator(QObject):
         """Hotkey trigger: region selector → screenshot → OCR → AI → overlay."""
         from .region_selector import RegionSelector
 
-        self.overlay.answer_view.setHtml(
-            '<p style="color:#8af;font-size:16px;text-align:center">'
-            '点击选择截图区域 (Esc 取消)</p>'
-        )
-        QApplication.processEvents()
-
         selector = RegionSelector()
         selector.region_selected.connect(self._on_region_selected)
 
