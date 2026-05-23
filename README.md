@@ -51,7 +51,7 @@ E:\miniconda3\envs\common\python.exe main.py
 
 - **GUI**: PySide6 (Qt6)
 - **截图**: dxcam (Windows Desktop Duplication API)
-- **OCR**: EasyOCR (ch_sim + en)，基于 PyTorch，CPU 运行
+- **OCR**: PaddleOCR 2.8 (ch + en)，基于 PaddlePaddle，CPU 运行
 - **AI**: DeepSeek Chat API (结构化 JSON 输出)
 - **全局热键**: WinAPI RegisterHotKey + QAbstractNativeEventFilter
 - **浮窗**: 半透明无边框 Tool 窗口，WA_TransparentForMouseEvents 点击穿透
