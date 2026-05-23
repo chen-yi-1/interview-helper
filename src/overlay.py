@@ -93,8 +93,10 @@ class OverlayWindow(QWidget):
         self.setLayout(layout)
 
     def _setup_hotkeys(self):
-        QShortcut(QKeySequence("Ctrl+Shift+H"), self, self._toggle_visible)
-        QShortcut(QKeySequence("Ctrl+Shift+X"), self, self.close)
+        for seq, cb in [("Ctrl+Shift+H", self._toggle_visible),
+                        ("Ctrl+Shift+X", self.close)]:
+            s = QShortcut(QKeySequence(seq), self, cb)
+            s.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
     def _toggle_visible(self):
         self.setVisible(not self.isVisible())
