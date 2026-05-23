@@ -78,7 +78,6 @@ deps = [
     ("faster_whisper", "faster_whisper"),
     ("sounddevice", "sounddevice"),
     ("httpx", "httpx"),
-    ("keyboard", "keyboard"),
 ]
 for name, mod in deps:
     try:
