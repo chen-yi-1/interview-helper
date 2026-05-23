@@ -66,7 +66,6 @@ class Orchestrator(QObject):
 
         selector = RegionSelector()
         selector.region_selected.connect(self._on_region_selected)
-        selector.show()
 
     def _on_region_selected(self, region: tuple):
         self.overlay.show_question("识别中...")
