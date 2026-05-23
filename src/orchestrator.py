@@ -58,15 +58,31 @@ class Orchestrator(QObject):
         self.hotkey_mgr.register('ctrl+shift+q', self._capture_and_ask)
 
     def _capture_and_ask(self):
-        """Hotkey trigger: screenshot → OCR → AI → overlay."""
-        self.overlay.show_question("截图中...")
+        """Hotkey trigger: region selector → screenshot → OCR → AI → overlay."""
+        from .region_selector import RegionSelector
+
+        # Flash feedback: show that hotkey was received
+        self.overlay.answer_view.setHtml(
+            '<p style="color:#8af;font-size:16px;text-align:center">'
+            '⏎ 热键已触发，请选择截图区域...</p>'
+        )
         QApplication.processEvents()
 
-        text = self.screen.capture_text()
+        # Show region selector
+        selector = RegionSelector()
+        selector.region_selected.connect(self._on_region_selected)
+        selector.show()
+
+    def _on_region_selected(self, region: tuple):
+        self.overlay.show_question("识别中...")
+        QApplication.processEvents()
+
+        text = self.screen.capture_text(region=region)
 
         if not text or len(text) < 5:
             self.overlay.show_structured({
-                "answer": "未识别到足够文字，请调整截图区域或重试。",
+                "answer": "未识别到足够文字，请重试。\n"
+                          "提示：截图区域尽量只包含题目部分。",
                 "thought": "", "code": "", "complexity": "",
             })
             return

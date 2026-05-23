@@ -6,16 +6,20 @@ class ScreenCapture:
         self._camera = None
         self._reader = None
 
-    def capture_text(self) -> str:
-        """Take one screenshot, run OCR, return extracted text."""
+    def capture_text(self, region: tuple = None) -> str:
+        """Take screenshot (optionally of a region), run OCR, return text.
+
+        Args:
+            region: (left, top, right, bottom) or None for full screen.
+        """
         if self._camera is None:
             import dxcam
-            self._camera = dxcam.create()
+            self._camera = dxcam.create(output_idx=0)
         if self._reader is None:
             import easyocr
             self._reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
 
-        frame = self._camera.grab()
+        frame = self._camera.grab(region=region)
         if frame is None:
             return ""
 
