@@ -116,12 +116,23 @@ class AudioMonitor(QThread):
         import sounddevice as sd
         hostapis = sd.query_hostapis()
         for ha in hostapis:
-            if 'wasapi' in ha['name'].lower():
-                for dev_idx in ha['devices']:
-                    dev = sd.query_devices(dev_idx)
-                    if dev['max_input_channels'] > 0:
-                        print(f"使用 WASAPI 设备: [{dev_idx}] {dev['name']}")
-                        return dev_idx
+            if 'wasapi' not in ha['name'].lower():
+                continue
+            candidates = []
+            for dev_idx in ha['devices']:
+                dev = sd.query_devices(dev_idx)
+                if dev['max_input_channels'] == 0:
+                    continue
+                name = dev['name'].lower()
+                # Skip microphones — they are not loopback devices
+                if any(kw in name for kw in ['麦克风', 'microphone', 'mic ']):
+                    continue
+                candidates.append((dev_idx, dev['name'], int(dev['default_samplerate'])))
+
+            if candidates:
+                idx, name, sr = candidates[0]
+                print(f"使用 WASAPI 回环: [{idx}] {name} ({sr} Hz)")
+                return idx
         return None
 
 

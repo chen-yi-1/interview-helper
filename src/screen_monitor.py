@@ -1,42 +1,33 @@
-from PySide6.QtCore import QThread, Signal
+"""Screen capture: single-shot screenshot + OCR, triggered by hotkey."""
 
 
-class ScreenMonitor(QThread):
-    new_text = Signal(str)
+class ScreenCapture:
+    def __init__(self):
+        self._camera = None
+        self._reader = None
 
-    def __init__(self, config):
-        super().__init__()
-        self.interval = config.get('ocr_interval', 2.0)
+    def capture_text(self) -> str:
+        """Take one screenshot, run OCR, return extracted text."""
+        if self._camera is None:
+            import dxcam
+            self._camera = dxcam.create()
+        if self._reader is None:
+            import easyocr
+            self._reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
 
-    def run(self):
-        import dxcam
-        import easyocr
+        frame = self._camera.grab()
+        if frame is None:
+            return ""
 
-        camera = dxcam.create()
-        reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
-        previous_texts = set()
+        results = self._reader.readtext(frame)
+        texts = []
+        for _bbox, text, conf in results:
+            text = text.strip()
+            if conf > 0.5 and len(text) > 2:
+                texts.append(text)
+        return " ".join(texts)
 
-        try:
-            while not self.isInterruptionRequested():
-                frame = camera.grab()
-                if frame is None:
-                    self.msleep(100)
-                    continue
-
-                results = reader.readtext(frame)
-                current_texts = set()
-
-                for _bbox, text, conf in results:
-                    text = text.strip()
-                    if conf > 0.5 and len(text) > 2:
-                        current_texts.add(text)
-
-                new_texts = current_texts - previous_texts
-                if new_texts:
-                    combined = " ".join(sorted(new_texts))
-                    self.new_text.emit(combined)
-
-                previous_texts = current_texts
-                self.msleep(int(self.interval * 1000))
-        finally:
-            del camera
+    def cleanup(self):
+        if self._camera is not None:
+            del self._camera
+            self._camera = None

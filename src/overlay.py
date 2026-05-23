@@ -1,10 +1,35 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTextEdit, QMenu, QScrollBar,
-)
+"""Floating overlay: click-through by default, structured answer rendering."""
+
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QMenu, QApplication
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import (
     QPainter, QBrush, QColor, QFont, QShortcut, QKeySequence, QTextCursor,
 )
+
+MIN_HEIGHT = 60
+MAX_HEIGHT_RATIO = 0.75
+WIDTH = 520
+
+HTML_TPL = """<style>
+body {{ color: #ccc; font-family: {font}; font-size: 15px; }}
+.thought {{ color: #999; font-size: 13px; margin: 4px 0; }}
+.thought:before {{ content: "💡 思路: "; }}
+.answer {{ color: #fff; font-size: 15px; margin: 8px 0; }}
+.code {{
+    background: rgba(255,255,255,0.06);
+    border-left: 3px solid #4a9eff;
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    color: #e0e0e0;
+    border-radius: 0 6px 6px 0;
+}}
+.complexity {{ color: #6af; font-size: 12px; margin: 6px 0; }}
+.label {{ color: #888; font-size: 12px; margin: 0; }}
+</style>
+{body}"""
 
 
 class OverlayWindow(QWidget):
@@ -17,72 +42,53 @@ class OverlayWindow(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
-        self.setGeometry(100, 100, 520, 360)
-
-        self._dragging = False
-        self._drag_pos = QPoint()
+        self._interactive = False
+        self._max_height = self._calc_max_height()
+        self.resize(WIDTH, MIN_HEIGHT)
 
         self._setup_ui()
         self._setup_hotkeys()
 
+    def _calc_max_height(self):
+        screen = QApplication.primaryScreen()
+        if screen:
+            return int(screen.availableGeometry().height() * MAX_HEIGHT_RATIO)
+        return 600
+
     def _setup_ui(self):
         layout = QVBoxLayout()
         layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
+        layout.setSpacing(0)
 
-        # Question label (collapsible)
-        self.question_label = QLabel()
-        self.question_label.setWordWrap(True)
-        self.question_label.setStyleSheet(
-            "color: rgba(180, 190, 210, 200); font-size: 13px;"
-            "padding: 0px;"
-        )
-        self.question_label.setVisible(False)
-
-        # Answer text area with scrollbar
         self.answer_view = QTextEdit()
         self.answer_view.setReadOnly(True)
-        self.answer_view.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        self.answer_view.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.answer_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.answer_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.answer_view.setStyleSheet("""
             QTextEdit {
-                color: white;
-                font-size: 15px;
-                background: transparent;
-                border: none;
-                padding: 0px;
+                background: transparent; border: none; padding: 0px;
             }
             QScrollBar:vertical {
-                background: rgba(255,255,255,20);
-                width: 8px;
-                border-radius: 4px;
-                margin: 2px 0;
+                background: rgba(255,255,255,15); width: 8px;
+                border-radius: 4px; margin: 2px 0;
             }
             QScrollBar::handle:vertical {
-                background: rgba(255,255,255,80);
-                border-radius: 4px;
-                min-height: 24px;
+                background: rgba(255,255,255,70);
+                border-radius: 4px; min-height: 24px;
             }
             QScrollBar::handle:vertical:hover {
-                background: rgba(255,255,255,140);
+                background: rgba(255,255,255,120);
             }
             QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
+            QScrollBar::sub-line:vertical { height: 0px; }
         """)
 
         font = QFont()
         font.setFamilies(["Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC"])
-        self.question_label.setFont(font)
         self.answer_view.setFont(font)
 
-        layout.addWidget(self.question_label)
         layout.addWidget(self.answer_view)
         self.setLayout(layout)
 
@@ -93,6 +99,31 @@ class OverlayWindow(QWidget):
     def _toggle_visible(self):
         self.setVisible(not self.isVisible())
 
+    # ── Click-through / Interactive mode ──
+
+    def set_interactive(self, on: bool):
+        self._interactive = on
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not on)
+        if on:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        else:
+            self.setCursor(Qt.CursorShape.BlankCursor)
+
+    def toggle_interactive(self):
+        self.set_interactive(not self._interactive)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Alt:
+            self.set_interactive(True)
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key.Key_Alt:
+            self.set_interactive(False)
+        super().keyReleaseEvent(event)
+
+    # ── Painting ──
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -100,54 +131,88 @@ class OverlayWindow(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(self.rect().adjusted(0, 0, 0, 0), 12, 12)
 
+    def wheelEvent(self, event):
+        self.answer_view.wheelEvent(event)
+
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if self._interactive and event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_pos = (
-                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            )
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
 
     def mouseMoveEvent(self, event):
-        if self._dragging:
+        if getattr(self, '_dragging', False):
             self.move(event.globalPosition().toPoint() - self._drag_pos)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if getattr(self, '_dragging', False) and event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
-
-    def wheelEvent(self, event):
-        # Forward scroll to the answer view
-        self.answer_view.wheelEvent(event)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
+        menu.addAction("点击穿透" if not self._interactive else "退出穿透", self.toggle_interactive)
         menu.addAction("隐藏", self._toggle_visible)
         menu.addAction("退出", self.close)
         menu.exec(event.globalPos())
 
+    # ── Public API ──
+
     def show_question(self, question: str):
-        self.question_label.setText(f"问题: {question}")
-        self.question_label.setVisible(True)
-        self.answer_view.setPlainText("")
+        self.answer_view.setHtml(
+            HTML_TPL.format(font="sans-serif",
+                            body=f'<p style="color:#999;font-size:13px">问题: {self._escape(question)}</p>'
+                                 f'<p style="color:#888">AI 分析中...</p>')
+        )
+        QApplication.processEvents()
+        self._adjust_size()
 
-    def on_answer_start(self):
-        self.answer_view.setPlainText("AI 思考中...")
+    def show_structured(self, data: dict):
+        """Render structured JSON answer."""
+        parts = []
+        font_family = "'Microsoft YaHei','PingFang SC',sans-serif"
+        mono = "'Cascadia Code','Fira Code','Consolas',monospace"
+
+        if data.get("thought"):
+            parts.append(
+                f'<div class="label">思路</div>'
+                f'<div class="thought">{self._escape(data["thought"])}</div>'
+            )
+        if data.get("answer"):
+            parts.append(
+                f'<div class="label">答案</div>'
+                f'<div class="answer">{self._escape(data["answer"])}</div>'
+            )
+        if data.get("code"):
+            parts.append(
+                f'<div class="label">代码</div>'
+                f'<div class="code">{self._escape(data["code"])}</div>'
+            )
+        if data.get("complexity"):
+            parts.append(
+                f'<div class="complexity">复杂度: {self._escape(data["complexity"])}</div>'
+            )
+
+        body = "\n".join(parts)
+        self.answer_view.setHtml(HTML_TPL.format(font=font_family, body=body))
+        QApplication.processEvents()
+        self._adjust_size()
         self._scroll_to_bottom()
 
-    def append_answer(self, token: str):
-        current = self.answer_view.toPlainText()
-        if current in ("", "监听中...", "AI 思考中..."):
-            self.answer_view.setPlainText(token)
-        else:
-            cursor = self.answer_view.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            cursor.insertText(token)
-            self.answer_view.setTextCursor(cursor)
-        self._scroll_to_bottom()
+    # ── Sizing ──
 
-    def finalize_answer(self):
-        self._scroll_to_bottom()
+    def _adjust_size(self):
+        self.answer_view.document().adjustSize()
+        doc_h = self.answer_view.document().size().height()
+        margins = self.layout().contentsMargins()
+        total = int(margins.top() + margins.bottom() + doc_h + 10)
+        new_h = max(MIN_HEIGHT, min(total, self._max_height))
+        if abs(self.height() - new_h) > 5:
+            self.resize(self.width(), new_h)
 
     def _scroll_to_bottom(self):
         sb = self.answer_view.verticalScrollBar()
         sb.setValue(sb.maximum())
+
+    @staticmethod
+    def _escape(text: str) -> str:
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

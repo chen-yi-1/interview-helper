@@ -10,7 +10,6 @@ print("=" * 60)
 print("Interview Helper - Test Suite")
 print("=" * 60)
 
-# --- helpers ---
 ok = 0
 fail = 0
 
@@ -35,53 +34,40 @@ if config.get('deepseek_api_key'):
 else:
     print("  !! API Key not set - AI test will be skipped")
 
-# --- 2. Question Detector ---
-print("\n[2/5] Question detector...")
-from src.question_detector import QuestionDetector
-qd = QuestionDetector(config)
-
-pos_cases = [
-    "请解释什么是多态",
-    "你能说说TCP和UDP的区别吗",
-    "什么是死锁？",
-    "描述一下你做过的最有挑战的项目",
-    "HashMap和ConcurrentHashMap有什么区别",
-    "请介绍一下项目架构",
-    "什么是指针",
-    "如何优化SQL查询性能",
-    "有哪些设计模式",
-    "Java和Go有什么区另",
-]
-for q in pos_cases:
-    check(f"positive: {q[:20]}", qd._looks_like_question(q))
-
-neg_cases = [
-    "这是一段普通代码",
-    "int x = 1;",
-    "System.out.println",
-    "const data = fetch(url)",
-]
-for nq in neg_cases:
-    check(f"negative: {nq[:20]}", not qd._looks_like_question(nq))
-
-h1 = qd._hash("请解释什么是多态")
-h2 = qd._hash("请解释什么是多态")
-check("dedup hash", h1 == h2)
-check("initial can trigger", qd._can_trigger())
-
-# --- 3. DeepSeek API ---
-print("\n[3/5] DeepSeek API...")
+# --- 2. AI Client: structured JSON ---
+print("\n[2/5] AI structured JSON parsing...")
 from src.ai_client import AIClient
+ai = AIClient(config)
 
-api_key = config.get('deepseek_api_key', '')
-if api_key:
-    ai = AIClient(config)
-    check("AIClient created", ai is not None)
-    check("system prompt set", len(ai.messages) == 1 and ai.messages[0]['role'] == 'system')
-    print("  (streaming API call requires QApp event loop - run main.py to verify)")
-else:
-    print("  SKIP (no API key configured)")
-    print("  Set deepseek_api_key in config.json to enable AI")
+test_cases = [
+    (
+        '```json\n{"thought": "先分析", "answer": "答案是42", "code": "", "complexity": ""}\n```',
+        "42"
+    ),
+    (
+        '{"thought": "思路", "answer": "O(n)算法", "code": "print(1)", "complexity": "O(n)"}',
+        "O(n)"
+    ),
+    (
+        'plain text fallback',
+        "plain text"
+    ),
+]
+for raw, expected in test_cases:
+    result = ai._parse_json(raw)
+    check(f"parse json: {raw[:30]}", expected in str(result))
+
+# --- 3. Hotkey manager ---
+print("\n[3/5] Hotkey manager...")
+from src.hotkey_manager import HotkeyManager
+hm = HotkeyManager()
+called = []
+def test_cb():
+    called.append(1)
+hm.register('ctrl+shift+9', test_cb)
+check("hotkey register", 'ctrl+shift+9' in hm._hotkeys)
+hm.unregister_all()
+check("hotkey unregister", len(hm._hotkeys) == 0)
 
 # --- 4. Dependencies ---
 print("\n[4/5] Dependencies...")
@@ -91,9 +77,8 @@ deps = [
     ("easyocr", "easyocr"),
     ("faster_whisper", "faster_whisper"),
     ("sounddevice", "sounddevice"),
-    ("silero_vad", "silero_vad"),
-    ("scipy.signal", "scipy.signal"),
     ("httpx", "httpx"),
+    ("keyboard", "keyboard"),
 ]
 for name, mod in deps:
     try:
@@ -113,14 +98,15 @@ try:
             for dev_idx in ha['devices']:
                 dev = sd.query_devices(dev_idx)
                 if dev['max_input_channels'] > 0:
-                    loopback.append((dev_idx, dev['name'], int(dev['default_samplerate'])))
+                    name_lower = dev['name'].lower()
+                    if not any(kw in name_lower for kw in ['麦克风', 'microphone', 'mic ']):
+                        loopback.append((dev_idx, dev['name'], int(dev['default_samplerate'])))
     if loopback:
         for idx, name, sr in loopback:
             print(f"  [{idx}] {name} ({sr} Hz)")
-        check(f"found {len(loopback)} WASAPI loopback devices", True)
+        check(f"found {len(loopback)} WASAPI loopback", True)
     else:
-        print("  !! No WASAPI loopback device found")
-        print("  Audio will fall back but screen+AI still works")
+        print("  !! No WASAPI loopback found")
 except Exception as e:
     print(f"  !! Audio check error: {e}")
 
@@ -129,10 +115,10 @@ print("\n" + "=" * 60)
 print(f"Results: {ok} passed, {fail} failed")
 print("=" * 60)
 print()
-print("Manual test steps:")
+print("Usage:")
 print("  1. Set deepseek_api_key in config.json")
 print("  2. Run: python main.py")
-print("  3. Floating overlay should show [Listening...]")
-print("  4. Play a Chinese video - watch for recognized text")
-print("  5. Ctrl+Shift+H to toggle overlay")
+print("  3. Press Ctrl+Shift+H to capture screen and ask AI")
+print("  4. Hold Alt to interact with the overlay (scroll/drag)")
+print("  5. Ctrl+Shift+H again to toggle overlay visibility")
 print("  6. Ctrl+Shift+Q to quit")

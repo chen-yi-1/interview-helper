@@ -1,48 +1,94 @@
+"""Orchestrator: ties hotkey → screenshot → OCR → AI → overlay."""
+
 import sys
 from PySide6.QtWidgets import QApplication
-from .screen_monitor import ScreenMonitor
+from PySide6.QtCore import QObject, QTimer
+
+from .screen_monitor import ScreenCapture
 from .audio_monitor import AudioMonitor
-from .question_detector import QuestionDetector
 from .ai_client import AIClient
 from .overlay import OverlayWindow
+from .hotkey_manager import HotkeyManager
 
 
-class Orchestrator:
+class Orchestrator(QObject):
     def __init__(self, config):
+        super().__init__()
         self.config = config
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
 
         self.overlay = OverlayWindow()
-        self.question_detector = QuestionDetector(config)
-        self.ai_client = AIClient(config)
-        self.screen_monitor = ScreenMonitor(config)
-        self.audio_monitor = AudioMonitor(config)
+        self.screen = ScreenCapture()
+        self.ai = AIClient(config)
+
+        # Audio is optional – continuous background monitoring
+        self.audio = AudioMonitor(config) if config.get('deepseek_api_key') else None
 
         self._connect_signals()
+        self._setup_hotkeys()
         self.app.aboutToQuit.connect(self._cleanup)
 
     def _connect_signals(self):
-        self.screen_monitor.new_text.connect(self.question_detector.on_screen_text)
-        self.audio_monitor.new_text.connect(self.question_detector.on_audio_text)
-        self.question_detector.new_question.connect(self._on_question)
-        self.ai_client.response_start.connect(self.overlay.on_answer_start)
-        self.ai_client.response_token.connect(self.overlay.append_answer)
+        self.ai.response_ready.connect(self.overlay.show_structured)
+        if self.audio:
+            self.audio.new_text.connect(self._on_audio_question)
+            # Also connect screen monitor error states
+        # For streaming tokens during audio flow
+        self.ai.response_token.connect(self._on_token)
 
-    def _on_question(self, question: str):
-        self.overlay.show_question(question)
-        self.ai_client.ask(question)
+    def _on_token(self, token: str):
+        """Streaming token from audio-triggered AI (not used in hotkey flow)."""
+        pass  # currently unused; could show live tokens
+
+    def _on_audio_question(self, text: str):
+        """Audio detected a question → send to AI."""
+        from .question_detector import QuestionDetector
+        if not hasattr(self, '_qd'):
+            self._qd = QuestionDetector(self.config)
+            self._qd.new_question.connect(self._do_ask)
+        self._qd.on_audio_text(text)
+
+    def _do_ask(self, text: str):
+        self.overlay.show_question(text)
+        self.ai.ask(text)
+
+    def _setup_hotkeys(self):
+        self.hotkey_mgr = HotkeyManager()
+        self.hotkey_mgr.register('ctrl+shift+h', self._capture_and_ask)
+
+    def _capture_and_ask(self):
+        """Hotkey trigger: screenshot → OCR → AI → overlay."""
+        self.overlay.show_question("截图中...")
+        QApplication.processEvents()
+
+        text = self.screen.capture_text()
+
+        if not text or len(text) < 5:
+            self.overlay.show_structured({
+                "answer": "未识别到足够文字，请调整截图区域或重试。",
+                "thought": "", "code": "", "complexity": "",
+            })
+            return
+
+        self.overlay.show_question(text)
+        self.ai.ask(text)
 
     def run(self):
         self.overlay.show()
-        self.screen_monitor.start()
-        self.audio_monitor.start()
+        self.overlay.show_structured({
+            "answer": "按 Ctrl+Shift+H 截图提问",
+            "thought": "", "code": "", "complexity": "",
+        })
+        if self.audio:
+            self.audio.start()
         sys.exit(self.app.exec())
 
     def _cleanup(self):
-        self.screen_monitor.requestInterruption()
-        self.audio_monitor.requestInterruption()
-        self.screen_monitor.wait(3000)
-        self.audio_monitor.wait(3000)
-        self.ai_client.abort()
-        self.ai_client.wait(3000)
+        self.hotkey_mgr.unregister_all()
+        self.screen.cleanup()
+        if self.audio:
+            self.audio.requestInterruption()
+            self.audio.wait(2000)
+        self.ai.abort()
+        self.ai.wait(2000)
